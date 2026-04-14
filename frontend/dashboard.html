@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Honeypot Risk Classification</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+}
+
+body{
+    font-family:Arial, sans-serif;
+    background:#f5f7fb;
+    color:#222;
+}
+
+header{
+    background:linear-gradient(90deg,#4f46e5,#06b6d4);
+    color:white;
+    padding:20px;
+    font-size:24px;
+    font-weight:bold;
+    text-align:center;
+    box-shadow:0 4px 10px rgba(0,0,0,0.1);
+}
+
+.container{
+    padding:30px;
+}
+
+.card{
+    background:white;
+    border-radius:15px;
+    padding:20px;
+    margin-bottom:20px;
+    box-shadow:0 4px 12px rgba(0,0,0,0.08);
+}
+
+.row{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+    gap:20px;
+}
+
+.stat{
+    text-align:center;
+    font-size:24px;
+    font-weight:bold;
+}
+
+input[type=file]{
+    padding:10px;
+    border:1px solid #ccc;
+    border-radius:8px;
+}
+
+button{
+    background:#4f46e5;
+    color:white;
+    border:none;
+    padding:12px 20px;
+    cursor:pointer;
+    font-weight:bold;
+    border-radius:8px;
+    margin-left:10px;
+    transition:0.3s;
+}
+
+button:hover{
+    background:#4338ca;
+}
+
+table{
+    width:100%;
+    border-collapse:collapse;
+    margin-top:15px;
+}
+
+th,td{
+    padding:12px;
+    text-align:center;
+    border-bottom:1px solid #eee;
+}
+
+th{
+    background:#4f46e5;
+    color:white;
+}
+
+tr:hover{
+    background:#f9fafb;
+}
+
+.low{
+    color:#10b981;
+    font-weight:bold;
+}
+
+.high{
+    color:#ef4444;
+    font-weight:bold;
+}
+
+.action-high{
+    color:#f59e0b;
+    font-weight:bold;
+}
+
+.action-low{
+    color:#3b82f6;
+    font-weight:bold;
+}
+
+.alert-box{
+    background:#fee2e2;
+    border-left:6px solid #ef4444;
+    color:#b91c1c;
+    padding:15px;
+    border-radius:10px;
+    margin-bottom:20px;
+    font-weight:bold;
+}
+
+.loading{
+    margin-top:10px;
+    color:#555;
+}
+
+canvas{
+    max-width:350px;
+    margin:auto;
+    display:block;
+}
+
+.status-badge{
+    display:inline-block;
+    padding:8px 14px;
+    border-radius:20px;
+    font-weight:bold;
+    margin-bottom:15px;
+}
+
+.critical{
+    background:#fee2e2;
+    color:#b91c1c;
+}
+
+.safe{
+    background:#dcfce7;
+    color:#166534;
+}
+
+.recommendation-list{
+    line-height:1.8;
+    padding-left:18px;
+    margin-top:10px;
+}
+</style>
+</head>
+
+<body>
+
+<header>🛡 Honeypot Risk Classification Dashboard</header>
+
+<div class="container">
+
+<!-- Upload -->
+<div class="card">
+    <h2>Upload Dataset Honeypot</h2>
+    <br>
+    <input type="file" id="file">
+    <button onclick="upload()">Analyze</button>
+    <div class="loading" id="loading"></div>
+</div>
+
+<!-- Statistik -->
+<div class="row">
+    <div class="card stat" id="totalIP">Total IP: -</div>
+    <div class="card stat" id="lowRisk">Low Risk: -</div>
+    <div class="card stat" id="highRisk">High Risk: -</div>
+    <div class="card stat">Model: Random Forest</div>
+</div>
+
+<!-- Warning -->
+<div id="warningBox"></div>
+
+<!-- Chart + Recommendation -->
+<div class="row">
+
+    <div class="card">
+        <h2 style="text-align:center;">Risk Distribution</h2>
+        <br>
+        <canvas id="riskChart"></canvas>
+    </div>
+
+    <div class="card">
+        <h2>Security Recommendation</h2>
+        <br>
+        <div id="recommendationBox">
+            <p>Silakan upload dataset untuk melihat rekomendasi keamanan.</p>
+        </div>
+    </div>
+
+</div>
+
+<!-- Table -->
+<div class="card">
+    <h2>Hasil Analisis dan Rekomendasi Tindakan</h2>
+
+    <table>
+        <thead>
+            <tr>
+                <th>IP Address</th>
+                <th>Connections</th>
+                <th>Failed</th>
+                <th>Success</th>
+                <th>Risk</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+    </table>
+</div>
+
+</div>
+
+<script>
+let chart = null;
+
+async function upload() {
+    const fileInput = document.getElementById("file");
+    const loading = document.getElementById("loading");
+
+    if (!fileInput.files.length) {
+        alert("Pilih file terlebih dahulu");
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", fileInput.files[0]);
+
+    loading.innerText = "Processing dataset...";
+
+    try {
+        const res = await fetch("http://127.0.0.1:5000/api/upload", {
+            method: "POST",
+            body: formData
+        });
+
+        const result = await res.json();
+
+        if (result.error) {
+            alert(result.error);
+            loading.innerText = "";
+            return;
+        }
+
+        renderDashboard(result.data);
+        loading.innerText = "Analysis completed.";
+
+    } catch (err) {
+        console.error(err);
+        alert("Gagal memproses data");
+        loading.innerText = "";
+    }
+}
+
+function renderDashboard(data) {
+
+    let low = 0;
+    let high = 0;
+
+    data.forEach(item => {
+        if(item.risk === "HIGH") high++;
+        else low++;
+    });
+
+    const total = data.length;
+    const percentHigh = ((high / total) * 100).toFixed(1);
+
+    document.getElementById("totalIP").innerText = "Total IP: " + total;
+    document.getElementById("lowRisk").innerText = "Low Risk: " + low;
+    document.getElementById("highRisk").innerText = "High Risk: " + high;
+
+    // Warning Box
+    if(high > 0){
+        document.getElementById("warningBox").innerHTML =
+        `<div class="alert-box">⚠ ${high} IP berstatus HIGH RISK memerlukan tindakan segera.</div>`;
+    } else {
+        document.getElementById("warningBox").innerHTML = "";
+    }
+
+    // Recommendation Panel
+    let recommendation = "";
+
+    if(percentHigh >= 70){
+        recommendation = `
+            <div class="status-badge critical">CRITICAL THREAT LEVEL</div>
+            <p><b>${percentHigh}%</b> trafik terdeteksi berisiko tinggi.</p>
+            <ul class="recommendation-list">
+                <li>Blokir IP berstatus HIGH RISK</li>
+                <li>Audit aktivitas login SSH</li>
+                <li>Aktifkan monitoring real-time</li>
+                <li>Investigasi sumber serangan</li>
+                <li>Perbarui aturan firewall</li>
+            </ul>
+        `;
+    } else {
+        recommendation = `
+            <div class="status-badge safe">MODERATE THREAT LEVEL</div>
+            <p><b>${percentHigh}%</b> trafik berisiko tinggi.</p>
+            <ul class="recommendation-list">
+                <li>Lanjutkan monitoring jaringan</li>
+                <li>Review IP mencurigakan</li>
+                <li>Belum diperlukan blokir massal</li>
+                <li>Periksa log secara berkala</li>
+            </ul>
+        `;
+    }
+
+    document.getElementById("recommendationBox").innerHTML = recommendation;
+
+    // Table
+    let html = "";
+
+    data.slice(0,100).forEach(item => {
+
+        let action = "";
+        let actionClass = "";
+
+        if(item.risk === "HIGH"){
+            action = "Block IP + Alert Admin";
+            actionClass = "action-high";
+        } else {
+            action = "Monitor Activity";
+            actionClass = "action-low";
+        }
+
+        html += `
+        <tr>
+            <td>${item.ip}</td>
+            <td>${item.connection_count}</td>
+            <td>${item.failed}</td>
+            <td>${item.success}</td>
+            <td class="${item.risk === 'HIGH' ? 'high' : 'low'}">${item.risk}</td>
+            <td class="${actionClass}">${action}</td>
+        </tr>
+        `;
+    });
+
+    document.getElementById("tableBody").innerHTML = html;
+
+    drawChart(low, high);
+}
+
+function drawChart(low, high){
+
+    const ctx = document.getElementById("riskChart");
+
+    if(chart) chart.destroy();
+
+    chart = new Chart(ctx,{
+        type:"doughnut",
+        data:{
+            labels:["Low Risk","High Risk"],
+            datasets:[{
+                data:[low,high],
+                backgroundColor:["#10b981","#ef4444"],
+                borderWidth:2
+            }]
+        },
+        options:{
+            responsive:true,
+            plugins:{
+                legend:{
+                    position:"top",
+                    labels:{
+                        color:"#222",
+                        font:{size:14}
+                    }
+                }
+            }
+        }
+    });
+}
+</script>
+
+</body>
+</html>

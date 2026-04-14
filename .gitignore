@@ -1,0 +1,5 @@
+datasets/
+backend/uploads/
+*.csv
+__pycache__/
+*.pyc
