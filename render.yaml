@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: honeypot-api
+    env: python
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: gunicorn --chdir backend app:app
