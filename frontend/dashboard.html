@@ -248,7 +248,7 @@ async function upload() {
     loading.innerText = "Processing dataset...";
 
     try {
-        const res = await fetch("http://127.0.0.1:5000/api/upload", {
+        const res = await fetch("https://farhaniapi.pythonanywhere.com/api/upload", {
             method: "POST",
             body: formData
         });
